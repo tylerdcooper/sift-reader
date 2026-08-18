@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 #include <Logging.h>
+#include <WiFi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -63,6 +64,12 @@ std::string imageUrl(int id, int width) {
 static bool getJson(const std::string& path, JsonDocument& doc) {
   if (!configured()) {
     LOG_ERR("SIFT", "not configured");
+    return false;
+  }
+  // Never touch the TLS/HTTP stack when Wi-Fi is down — on this platform that
+  // asserts on a null mutex. Return false so the caller falls back to cache.
+  if (WiFi.status() != WL_CONNECTED) {
+    LOG_ERR("SIFT", "wifi not connected");
     return false;
   }
   std::string url = baseUrl() + path;

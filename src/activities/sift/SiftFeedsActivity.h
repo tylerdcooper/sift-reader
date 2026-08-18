@@ -18,8 +18,11 @@ class SiftFeedsActivity final : public UiListActivity {
   SiftFeedsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
+  void onExit() override;
 
  private:
+  // Show a single "Connecting to Wi-Fi…" placeholder row while the network comes up.
+  void showConnecting();
   int listCount() const override { return count; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;

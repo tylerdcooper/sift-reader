@@ -8,6 +8,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <WiFi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -80,7 +81,7 @@ void SiftArticleActivity::prepareImage(int id) {
     if (Storage.exists(SIFT_IMG_PATH)) Storage.remove(SIFT_IMG_PATH);
     if (Storage.exists(SIFT_IMG_CACHE)) Storage.remove(SIFT_IMG_CACHE);
     const std::string url = sift::imageUrl(id, bodyWidthPx());
-    if (url.empty()) return;
+    if (url.empty() || WiFi.status() != WL_CONNECTED) return;  // no net when Wi-Fi is down
     sift::NetGuard guard;  // serialize with the background sync task
     if (HttpDownloader::downloadToFile(url, imagePath) != HttpDownloader::OK) {
       LOG_ERR("SIFT", "image download failed");

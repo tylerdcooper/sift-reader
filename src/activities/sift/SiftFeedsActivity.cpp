@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 #include <HalGPIO.h>
+#include <WiFi.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -11,6 +12,8 @@
 #include "SiftClient.h"
 #include "SiftReaderActivity.h"
 #include "SiftSync.h"
+#include "SilentRestart.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -67,9 +70,42 @@ void SiftFeedsActivity::buildRows() {
 
 void SiftFeedsActivity::onEnter() {
   UiListActivity::onEnter();
+  // CrossPoint keeps Wi-Fi down outside network screens, so bring it up (auto-
+  // connecting to the saved network) before any fetch — otherwise the TLS stack
+  // asserts on a null mutex. Child reader/article activities inherit it.
+  if (sift::configured() && WiFi.status() != WL_CONNECTED) {
+    showConnecting();
+    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                           [this](const ActivityResult&) {
+                             buildRows();
+                             requestUpdate();
+                           });
+    return;
+  }
   buildRows();
-  // Automatic dock sync is handled in the background (see SiftBackgroundSync);
-  // the "Download for offline" row triggers it manually with progress.
+}
+
+void SiftFeedsActivity::onExit() {
+  // CrossPoint convention: network screens reboot to home on exit to tear Wi-Fi
+  // down cleanly (see OPDS/Calibre/OTA). Must be last — it restarts the device.
+  UiListActivity::onExit();
+  if (WiFi.getMode() != WIFI_MODE_NULL) silentRestart();
+}
+
+void SiftFeedsActivity::showConnecting() {
+  labels.clear();
+  values.clear();
+  feedSelectors.clear();
+  labels.push_back("Connecting to Wi-Fi\xE2\x80\xA6");  // …
+  values.push_back("");
+  feedSelectors.push_back("");
+  count = 1;
+  freeink::ui::ListItem item;
+  item.label = labels[0].c_str();
+  item.actionValue = 0;
+  rowItems[0] = item;
+  nav.selected = 0;
+  requestUpdate();
 }
 
 void SiftFeedsActivity::activateIndex(int index) {

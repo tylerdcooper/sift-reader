@@ -572,8 +572,10 @@ void loop() {
   gpio.update();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
 
-  // Docked + configured: pull the Sift catalog for offline in the background.
-  sift::backgroundSyncTick();
+  // Idle dock auto-sync is disabled: CrossPoint keeps Wi-Fi down outside network
+  // screens (and reboots on exit), so a background task can't reach the network
+  // while idle. Offline sync runs from inside Sift via "Download for offline".
+  // sift::backgroundSyncTick();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 
