@@ -38,6 +38,8 @@ class SiftConfigStore : public PersistableStore<SiftConfigStore> {
 
   // Base URL with any trailing slashes stripped.
   std::string getBaseUrl() const;
+  // OPDS navigation-root URL (what an OPDS server entry points at), token included.
+  std::string getRootOpdsUrl() const;
   // Full OPDS acquisition-feed URL for a collection type ("saved"/"favorites"/"all").
   std::string getOpdsUrl(const char* type) const;
 };

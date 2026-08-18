@@ -37,6 +37,13 @@ std::string SiftConfigStore::getBaseUrl() const {
   return url;
 }
 
+std::string SiftConfigStore::getRootOpdsUrl() const {
+  std::string url = getBaseUrl();
+  url += "/api/opds?token=";
+  url += token;
+  return url;
+}
+
 std::string SiftConfigStore::getOpdsUrl(const char* type) const {
   // Token characters ("<int>_<hex>") are all URL-safe, so no encoding needed.
   std::string url = getBaseUrl();

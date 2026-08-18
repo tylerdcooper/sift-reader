@@ -30,6 +30,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "SiftConfigStore.h"
+#include "WifiCredentialStore.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
@@ -585,6 +586,40 @@ void loop() {
         uint8_t* buf = display.getFrameBuffer();
         logSerial.write(buf, bufferSize);
         logSerial.printf("SCREENSHOT_END\n");
+      } else if (cmd.startsWith("SIFT ")) {
+        // Provision Wi-Fi + Sift account over serial (sent by the Sift web
+        // installer right after flashing): CMD:SIFT <ssid>\t<pass>\t<token>\t<url>
+        const String payload = cmd.substring(5);
+        const int t1 = payload.indexOf('\t');
+        const int t2 = t1 >= 0 ? payload.indexOf('\t', t1 + 1) : -1;
+        const int t3 = t2 >= 0 ? payload.indexOf('\t', t2 + 1) : -1;
+        if (t1 > 0 && t2 > t1 && t3 > t2) {
+          const std::string ssid(payload.substring(0, t1).c_str());
+          const std::string pass(payload.substring(t1 + 1, t2).c_str());
+          const std::string token(payload.substring(t2 + 1, t3).c_str());
+          const std::string url(payload.substring(t3 + 1).c_str());
+          WIFI_STORE.loadFromFile();  // not loaded at boot; load before adding so we don't clobber saved networks
+          WIFI_STORE.addCredential(ssid, pass);
+          WIFI_STORE.setLastConnectedSsid(ssid);
+          SIFT_CONFIG.setConfig(url, token);
+          // Register Sift as an OPDS server (deduped by name) so it appears in
+          // the existing OPDS browser, mirroring the web "Connect my X4" flow.
+          const OpdsServer siftServer{"Sift", SIFT_CONFIG.getRootOpdsUrl(), "", ""};
+          const auto& servers = OPDS_STORE.getServers();
+          bool updatedServer = false;
+          for (size_t i = 0; i < servers.size(); ++i) {
+            if (servers[i].name == "Sift") {
+              OPDS_STORE.updateServer(i, siftServer);
+              updatedServer = true;
+              break;
+            }
+          }
+          if (!updatedServer) OPDS_STORE.addServer(siftServer);
+          logSerial.printf("SIFT_PROVISIONED\n");
+          LOG_INF("SIFT", "Provisioned Wi-Fi + config over serial (ssid=%s)", ssid.c_str());
+        } else {
+          logSerial.printf("SIFT_ERROR:format\n");
+        }
       }
     }
   }
