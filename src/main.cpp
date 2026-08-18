@@ -31,6 +31,7 @@
 #include "OpdsServerStore.h"
 #include "SiftConfigStore.h"
 #include "WifiCredentialStore.h"
+#include "activities/sift/SiftReaderActivity.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
@@ -507,6 +508,10 @@ void setup() {
   // Output polarity is resolved per render by ActivityManager (night mode
   // inverts only the reading surfaces), so nothing to restore here.
 
+#if defined(SIMULATOR) && defined(SIFT_PREVIEW)
+  // Simulator preview: boot straight into the Sift reader for UI iteration.
+  activityManager.replaceActivity(std::make_unique<SiftReaderActivity>(renderer, mappedInputManager));
+#else
   if (recoveryFirmwareMode) {
     // Skip normal home/reader routing: jump straight into the SD firmware picker.
     activityManager.replaceActivity(
@@ -535,6 +540,7 @@ void setup() {
     APP_STATE.saveToFile();
     activityManager.goToReader(path, allowFastInitialReaderRefresh);
   }
+#endif
 
   if (resume == BootResume::Silent) {
     // Block until the first paint physically completes. refreshDisplay()
