@@ -37,7 +37,7 @@ void ensureDirs() {
 }
 
 std::string imagePath(int id, int n) {
-  return std::string(IMG_DIR) + "/" + std::to_string(id) + "_" + std::to_string(n) + ".jpg";
+  return std::string(IMG_DIR) + "/" + std::to_string(id) + "_" + std::to_string(n) + ".png";
 }
 
 bool hasImage(int id, int n) {

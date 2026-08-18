@@ -47,8 +47,10 @@ bool configured() { return !baseUrl().empty() && !token().empty(); }
 
 std::string imageUrl(int id, int n, int width) {
   if (!configured()) return "";
+  // fmt=png: server pre-dithers (Atkinson) to the native gray codes; the device
+  // blits it without re-dithering.
   return baseUrl() + "/api/device/image/" + std::to_string(id) + "?n=" + std::to_string(n) +
-         "&w=" + std::to_string(width) + "&token=" + token();
+         "&w=" + std::to_string(width) + "&fmt=png&token=" + token();
 }
 
 // GET baseUrl+path (+token), Wi-Fi- and mutex-guarded, returning the body.

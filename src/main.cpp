@@ -30,6 +30,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "SiftConfigStore.h"
+#include "activities/sift/SiftBackgroundSync.h"
 #include "WifiCredentialStore.h"
 #include "activities/sift/SiftFeedsActivity.h"
 #include "RecentBooksStore.h"
@@ -570,6 +571,10 @@ void loop() {
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   gpio.update();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+
+  // On power + configured: connect Wi-Fi and pull the Sift queue in the
+  // background, so opening Sift shows the synced list, never a connect screen.
+  sift::backgroundTick();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 

@@ -19,7 +19,7 @@ class SiftFeedsActivity final : public UiListActivity {
   SiftFeedsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
-  void onExit() override;
+  void loop() override;
 
  private:
   int listCount() const override { return count; }
@@ -27,9 +27,9 @@ class SiftFeedsActivity final : public UiListActivity {
   void activateIndex(int index) override;
   const char* headerTitle() const override { return "Sift"; }
 
-  void buildRows();          // from the on-SD cache
-  void syncAndRefresh();     // silent queue sync, then rebuild rows
-  void showConnecting();
+  void buildRows();  // from the on-SD cache (shows "Sync in progress" if empty + syncing)
+
+  bool wasBusy = false;  // to refresh the list when a background sync completes
 
   static constexpr int kMax = 128;
   freeink::ui::ListItem rowItems[kMax]{};

@@ -24,6 +24,7 @@ constexpr size_t MAX_LINE_BYTES = 191;
 constexpr int SIDE_PADDING = 20;
 constexpr int IMG_GAP = 14;                    // space around an inline image
 constexpr float IMG_MAX_BODY_FRACTION = 0.6f;  // an image can use up to this of the body height
+constexpr int MARK_BTN_H = 46;                 // tappable "Mark as read" button
 }  // namespace
 
 SiftArticleActivity::SiftArticleActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int articleId)
@@ -39,10 +40,13 @@ int SiftArticleActivity::bodyStartY() const {
          metrics.verticalSpacing;
 }
 
-int SiftArticleActivity::bodyHeightPx() const {
+int SiftArticleActivity::markButtonTop() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int bottom = metrics.buttonHintsHeight + metrics.verticalSpacing;
-  return renderer.getScreenHeight() - bodyStartY() - bottom;
+  return renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing - MARK_BTN_H;
+}
+
+int SiftArticleActivity::bodyHeightPx() const {
+  return markButtonTop() - bodyStartY() - IMG_GAP;
 }
 
 int SiftArticleActivity::measureSpan(const int fontId, const char* text, size_t len) const {
@@ -218,6 +222,10 @@ void SiftArticleActivity::loop() {
 
   int tx = 0, ty = 0;
   if (mappedInput.wasScreenTapped(tx, ty)) {
+    if (ty >= markButtonTop()) {  // tapped the "Mark as read" button
+      markReadAndClose();
+      return;
+    }
     if (tx < renderer.getScreenWidth() / 3) {
       if (currentPage > 0) { currentPage--; requestUpdate(); }
     } else if (currentPage + 1 < totalPages) {
@@ -264,7 +272,7 @@ void SiftArticleActivity::render(RenderLock&&) {
       const int imgX = SIDE_PADDING + std::max(0, (imageAreaWidth() - elems[i].w) / 2);
       ImageBlock block(sift::cache::imagePath(articleId, elems[i].n), std::string(),
                        static_cast<int16_t>(elems[i].w), static_cast<int16_t>(elems[i].h));
-      block.render(renderer, imgX, y + IMG_GAP, /*dither=*/true);
+      block.render(renderer, imgX, y + IMG_GAP, /*dither=*/false);  // server already Atkinson-dithered
       ImageBlock::releaseRenderCache();
     }
     y += elems[i].height;
@@ -279,6 +287,18 @@ void SiftArticleActivity::render(RenderLock&&) {
       renderer.drawText(fontId, SIDE_PADDING, ys[i - first], elems[i].text.c_str());
     }
     if (pass == 0) scope.endScanAndPrewarm();
+  }
+
+  // Tappable "Mark as read" button (touch-first; Confirm also triggers it).
+  {
+    const int bx = SIDE_PADDING;
+    const int bw = renderer.getScreenWidth() - 2 * SIDE_PADDING;
+    const int by = markButtonTop();
+    renderer.fillRoundedRect(bx, by, bw, MARK_BTN_H, 10, Color::LightGray);
+    const char* label = "Mark as read";
+    const int lw = renderer.getTextWidth(UI_12_FONT_ID, label);
+    const int lh = renderer.getLineHeight(UI_12_FONT_ID);
+    renderer.drawText(UI_12_FONT_ID, bx + (bw - lw) / 2, by + (MARK_BTN_H - lh) / 2, label);
   }
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), "Read", (currentPage > 0 ? "<" : ""),

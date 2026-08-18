@@ -38,6 +38,7 @@ class SiftArticleActivity final : public Activity {
   int bodyStartY() const;
   int bodyHeightPx() const;
   int imageAreaWidth() const;
+  int markButtonTop() const;  // y of the tappable "Mark as read" button
   int measureSpan(int fontId, const char* text, size_t len) const;
   void wrapInto(const std::string& text, int fontId, int maxWidth, int lineHeight);
   void markReadAndClose();

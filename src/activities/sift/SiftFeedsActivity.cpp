@@ -8,11 +8,10 @@
 
 #include "MappedInputManager.h"
 #include "SiftArticleActivity.h"
+#include "SiftBackgroundSync.h"
 #include "SiftCache.h"
 #include "SiftClient.h"
 #include "SiftSync.h"
-#include "SilentRestart.h"
-#include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
@@ -29,8 +28,16 @@ void SiftFeedsActivity::buildRows() {
   sift::cache::loadList(list);
 
   if (list.empty()) {
-    labels.push_back(sift::configured() ? "No saved articles yet" : "Sift not set up");
-    subtitles.push_back(sift::configured() ? "Send articles from Sift on the web" : "");
+    if (!sift::configured()) {
+      labels.push_back("Sift not set up");
+      subtitles.push_back("");
+    } else if (sift::bgBusy()) {
+      labels.push_back("Sync in progress\xE2\x80\xA6");
+      subtitles.push_back("Downloading your saved articles");
+    } else {
+      labels.push_back("No saved articles yet");
+      subtitles.push_back("Send articles from Sift on the web");
+    }
     ids.push_back(-1);
   } else {
     for (const auto& it : list) {
@@ -53,51 +60,35 @@ void SiftFeedsActivity::buildRows() {
   nav.selected = 0;
 }
 
-void SiftFeedsActivity::showConnecting() {
-  labels.clear();
-  subtitles.clear();
-  ids.clear();
-  labels.push_back("Connecting to Wi-Fi\xE2\x80\xA6");
-  subtitles.push_back("");
-  ids.push_back(-1);
-  count = 1;
-  fui::ListItem item;
-  item.label = labels[0].c_str();
-  item.actionValue = 0;
-  rowItems[0] = item;
-  nav.selected = 0;
-  requestUpdate();
-}
-
-void SiftFeedsActivity::syncAndRefresh() {
-  sift::sync::syncQueue();  // silent — no progress screen
-  buildRows();
-  requestUpdate();
-}
-
 void SiftFeedsActivity::onEnter() {
   UiListActivity::onEnter();
-  buildRows();  // show the cached queue immediately (offline-first)
+  // Show the cached queue immediately — never a connect screen. The background
+  // service (on power) keeps it synced; if it's mid-sync and we have nothing
+  // cached, buildRows() shows "Sync in progress".
+  wasBusy = sift::bgBusy();
+  buildRows();
 
-  if (!sift::configured()) return;
 #ifdef SIMULATOR
-  WiFi.begin();  // sim connects immediately; skip the connect UI for headless testing
-  syncAndRefresh();
-  return;
-#endif
-  if (WiFi.status() == WL_CONNECTED) {
-    syncAndRefresh();
-    return;
+  // The sim isn't "docked", so the background service won't run; sync inline so
+  // the list can be exercised headlessly.
+  if (sift::configured()) {
+    WiFi.begin();
+    sift::sync::syncQueue();
+    buildRows();
+    requestUpdate();
   }
-  // Bring Wi-Fi up (auto-connect saved network), then sync silently.
-  showConnecting();
-  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                         [this](const ActivityResult&) { syncAndRefresh(); });
+#endif
 }
 
-void SiftFeedsActivity::onExit() {
-  UiListActivity::onExit();
-  if (WiFi.getMode() != WIFI_MODE_NULL) silentRestart();  // CrossPoint network-screen teardown
+void SiftFeedsActivity::loop() {
+  UiListActivity::loop();
+  // When a background sync finishes (or starts), refresh the list live.
+  const bool busy = sift::bgBusy();
+  if (busy != wasBusy) {
+    wasBusy = busy;
+    buildRows();
+    requestUpdate();
+  }
 }
 
 void SiftFeedsActivity::activateIndex(int index) {
