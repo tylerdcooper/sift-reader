@@ -520,6 +520,23 @@ void EpubReaderActivity::loop() {
     return;
   }
 
+  // Optional: physical side buttons skip by chapter (used to flip
+  // article-to-article in the combined Sift book). Match detectPageTurn's
+  // press/release edge and consume the event before the page-turn path runs;
+  // front buttons and taps still page normally.
+  if (SETTINGS.sideButtonChapterNav && section) {
+    const bool usePress = SETTINGS.longPressButtonBehavior == SETTINGS.OFF;
+    const bool sidePrev = usePress ? mappedInput.wasPressed(MappedInputManager::Button::PageBack)
+                                   : mappedInput.wasReleased(MappedInputManager::Button::PageBack);
+    const bool sideNext = usePress ? mappedInput.wasPressed(MappedInputManager::Button::PageForward)
+                                   : mappedInput.wasReleased(MappedInputManager::Button::PageForward);
+    if (sidePrev || sideNext) {
+      skipPages(sideNext ? 1 : -1);
+      requestUpdate();
+      return;
+    }
+  }
+
   auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
   prevTriggered = prevTriggered || touch.prev;
   nextTriggered = nextTriggered || touch.next;

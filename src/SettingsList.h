@@ -306,6 +306,8 @@ inline std::vector<SettingInfo> getSettingsList(const SdCardFontRegistry* regist
             "touchReaderControls", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_TAP_FOR_READER_MENU, &CrossPointSettings::tapForReaderMenu, "tapForReaderMenu",
                             StrId::STR_CAT_CONTROLS),
+        SettingInfo::Toggle(StrId::STR_SIDE_BTN_CHAPTER, &CrossPointSettings::sideButtonChapterNav,
+                            "sideButtonChapterNav", StrId::STR_CAT_CONTROLS),
         SettingInfo::Toggle(StrId::STR_FRONT_BTN_FOLLOW_ORIENTATION, &CrossPointSettings::frontButtonFollowOrientation,
                             "frontButtonFollowOrientation", StrId::STR_CAT_CONTROLS),
         SettingInfo::Enum(StrId::STR_LONG_PRESS_BEHAVIOR, &CrossPointSettings::longPressButtonBehavior,
