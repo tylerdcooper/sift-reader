@@ -30,6 +30,15 @@ constexpr int IMG_GAP = 12;                    // space between the lead image a
 constexpr float IMG_MAX_BODY_FRACTION = 0.5f;  // image never eats more than this of the body height
 const char* const SIFT_IMG_PATH = "/.crosspoint/sift-img.png";
 const char* const SIFT_IMG_CACHE = "/.crosspoint/sift-img.pxc";
+
+// The panel's SHORT side, minus margins. min(width,height) is orientation-
+// invariant (always the 480 axis on the X4 Pro), so an image sized/placed
+// against it can't spill off the panel even if getScreenWidth() reports the
+// wrong axis while we lay out. Sizing against getScreenWidth() directly is what
+// pushed the image ~600px wide and off-screen.
+int imageAreaWidth(const GfxRenderer& r) {
+  return std::min(r.getScreenWidth(), r.getScreenHeight()) - 2 * SIDE_PADDING;
+}
 }  // namespace
 
 SiftArticleActivity::SiftArticleActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, int articleId,
@@ -80,7 +89,7 @@ void SiftArticleActivity::prepareImage(int id) {
     imagePath = SIFT_IMG_PATH;
     if (Storage.exists(SIFT_IMG_PATH)) Storage.remove(SIFT_IMG_PATH);
     if (Storage.exists(SIFT_IMG_CACHE)) Storage.remove(SIFT_IMG_CACHE);
-    const std::string url = sift::imageUrl(id, bodyWidthPx());
+    const std::string url = sift::imageUrl(id, imageAreaWidth(renderer));
     if (url.empty() || WiFi.status() != WL_CONNECTED) return;  // no net when Wi-Fi is down
     sift::NetGuard guard;  // serialize with the background sync task
     if (HttpDownloader::downloadToFile(url, imagePath) != HttpDownloader::OK) {
@@ -96,9 +105,10 @@ void SiftArticleActivity::prepareImage(int id) {
     return;
   }
 
-  // The server already fit the width; only the height cap can force a shrink.
-  const int maxW = bodyWidthPx();
-  const int maxH = std::max(1, static_cast<int>(bodyHeightPx() * IMG_MAX_BODY_FRACTION));
+  // Size against the panel's short axis so the image can't spill off-screen
+  // regardless of which orientation getScreenWidth() reports during layout.
+  const int maxW = imageAreaWidth(renderer);
+  const int maxH = std::max(1, static_cast<int>(imageAreaWidth(renderer) * IMG_MAX_BODY_FRACTION));
   float scale = std::min({maxW / static_cast<float>(dims.width), maxH / static_cast<float>(dims.height), 1.0f});
   imgW = std::max(1, static_cast<int>(dims.width * scale));
   imgH = std::max(1, static_cast<int>(dims.height * scale));
@@ -304,7 +314,7 @@ void SiftArticleActivity::render(RenderLock&&) {
   // Decoded + dithered on first draw, then served from its RAM/SD cache; freed
   // once this page render completes.
   if (currentPage == 0 && imageReady && imageBlock) {
-    const int imgX = SIDE_PADDING + std::max(0, (bodyWidthPx() - imgW) / 2);
+    const int imgX = SIDE_PADDING + std::max(0, (imageAreaWidth(renderer) - imgW) / 2);
     // Server already dithered to the native gray codes — render without a second
     // dithering pass.
     imageBlock->render(renderer, imgX, bodyStartY(), /*dither=*/false);
