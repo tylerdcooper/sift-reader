@@ -318,7 +318,7 @@ void ImageBlock::renderPlaceholder(GfxRenderer& renderer, const int x, const int
   }
 }
 
-void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
+void ImageBlock::render(GfxRenderer& renderer, const int x, const int y, bool dither) {
   // The font-prewarm scan pass only accumulates glyphs; an image contributes
   // none, and its DirectPixelWriter output bypasses the renderer's scan-mode
   // suppression, so it would otherwise do a full (discarded) cache render every
@@ -397,7 +397,7 @@ void ImageBlock::render(GfxRenderer& renderer, const int x, const int y) {
   config.maxWidth = width;
   config.maxHeight = height;
   config.useGrayscale = true;
-  config.useDithering = true;
+  config.useDithering = dither;
   config.performanceMode = false;
   config.useExactDimensions = true;  // Use pre-calculated dimensions to avoid rounding mismatches
   config.cachePath = cachePath;      // Enable caching during decode

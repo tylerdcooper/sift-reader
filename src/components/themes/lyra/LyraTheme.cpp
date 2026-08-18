@@ -25,6 +25,8 @@
 #include "components/icons/library.h"
 #include "components/icons/recent.h"
 #include "components/icons/settings2.h"
+#include "components/icons/sift.h"
+#include "components/icons/sift24.h"
 #include "components/icons/text24.h"
 #include "components/icons/transfer.h"
 #include "components/icons/wifi.h"
@@ -52,6 +54,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return Image24Icon;
       case UIIcon::Book:
         return Book24Icon;
+      case UIIcon::Sift:
+        return Sift24Icon;
       case UIIcon::File:
         return File24Icon;
       default:
@@ -63,6 +67,8 @@ const uint8_t* iconForName(UIIcon icon, int size) {
         return FolderIcon;
       case UIIcon::Book:
         return BookIcon;
+      case UIIcon::Sift:
+        return SiftIcon;
       case UIIcon::Recent:
         return RecentIcon;
       case UIIcon::Settings:

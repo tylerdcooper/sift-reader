@@ -1,19 +1,23 @@
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include <GfxRenderer.h>
 
+#include "SiftClient.h"
 #include "activities/UiListActivity.h"
 
 class MappedInputManager;
 
 /**
- * Native Sift reader: a scrollable list of articles (title + "feed · date"),
- * the in-place alternative to browsing OPDS. First iteration uses sample data so
- * the layout can be designed in the simulator; real feed data wires in next.
+ * In-place article list for one feed selector ("all", "saved", "favorites", or a
+ * numeric feed id). Fetches metadata from the Sift server; selecting a row opens
+ * the article reader.
  */
 class SiftReaderActivity final : public UiListActivity {
  public:
-  SiftReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  SiftReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string feed = "all");
 
   void onEnter() override;
 
@@ -23,7 +27,12 @@ class SiftReaderActivity final : public UiListActivity {
   void activateIndex(int index) override;
   const char* headerTitle() const override { return "Sift"; }
 
-  static constexpr int kMax = 24;
+  std::string feed;
+  static constexpr int kMax = 128;
   freeink::ui::ListItem rowItems[kMax]{};
   int count = 0;
+  std::vector<sift::ArticleMeta> articles;
+  // Backing storage for the ListItem const char* pointers.
+  std::vector<std::string> labels;
+  std::vector<std::string> subtitles;
 };

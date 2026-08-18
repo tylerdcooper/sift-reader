@@ -1,51 +1,139 @@
 #include "SiftFeedsActivity.h"
 
 #include <GfxRenderer.h>
+#include <HalGPIO.h>
 
+#include <algorithm>
+#include <cstdio>
 #include <memory>
 
 #include "MappedInputManager.h"
+#include "SiftClient.h"
 #include "SiftReaderActivity.h"
+#include "SiftSync.h"
 #include "components/UITheme.h"
+#include "fontIds.h"
 
 namespace fui = freeink::ui;
 
 namespace {
-struct SampleFeed {
-  const char* name;
-  const char* unread;  // shown right-aligned; "" hides it
-};
-constexpr SampleFeed kFeeds[] = {
-    {"All articles", "71"}, {"Hacker News", "48"},   {"The Verge", "12"}, {"Craft", "5"},
-    {"Database Weekly", "3"}, {"Longreads", "2"},     {"Type Digest", "2"}, {"Indie Hackers", "1"},
-    {"Mind & Machine", ""},  {"The Prepared", ""},
-};
-constexpr int kFeedCount = static_cast<int>(sizeof(kFeeds) / sizeof(kFeeds[0]));
+const char* const SYNC_SELECTOR = "__sync__";
+constexpr int SIDE_PADDING = 20;
 }  // namespace
 
 SiftFeedsActivity::SiftFeedsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("SiftFeeds", renderer, mappedInput) {}
 
-void SiftFeedsActivity::onEnter() {
-  UiListActivity::onEnter();
-  count = kFeedCount < kMax ? kFeedCount : kMax;
+void SiftFeedsActivity::buildRows() {
+  labels.clear();
+  values.clear();
+  feedSelectors.clear();
+
+  int totalUnread = 0;
+  std::vector<sift::Feed> feeds;
+  const bool isConfigured = sift::configured();
+  if (isConfigured && sift::fetchFeeds(totalUnread, feeds)) {
+    labels.push_back("All articles");
+    values.push_back(totalUnread > 0 ? std::to_string(totalUnread) : "");
+    feedSelectors.push_back("all");
+    for (const auto& f : feeds) {
+      labels.push_back(f.title.empty() ? "(untitled feed)" : f.title);
+      values.push_back(f.unread > 0 ? std::to_string(f.unread) : "");
+      feedSelectors.push_back(std::to_string(f.id));
+    }
+    labels.push_back("Download all for offline");
+    values.push_back("");
+    feedSelectors.push_back(SYNC_SELECTOR);
+  } else if (!isConfigured) {
+    labels.push_back("Sift not set up");
+    values.push_back("");
+    feedSelectors.push_back("");
+  } else {
+    labels.push_back("Couldn't reach Sift");
+    values.push_back("");
+    feedSelectors.push_back("");
+  }
+
+  count = std::min(static_cast<int>(labels.size()), kMax);
   for (int i = 0; i < count; ++i) {
     fui::ListItem item;
-    item.label = kFeeds[i].name;
-    if (kFeeds[i].unread[0] != '\0') item.value = kFeeds[i].unread;
+    item.label = labels[i].c_str();
+    if (!values[i].empty()) item.value = values[i].c_str();
     item.actionValue = static_cast<int16_t>(i);
     rowItems[i] = item;
   }
   nav.selected = 0;
 }
 
+void SiftFeedsActivity::onEnter() {
+  UiListActivity::onEnter();
+  buildRows();
+  // Automatic dock sync is handled in the background (see SiftBackgroundSync);
+  // the "Download for offline" row triggers it manually with progress.
+}
+
 void SiftFeedsActivity::activateIndex(int index) {
   app.clearTapFlash();
-  if (index < 0 || index >= count) return;
-  // v1: every feed opens the same sample article list; per-feed filtering wires
-  // in with real data.
-  startActivityForResult(std::make_unique<SiftReaderActivity>(renderer, mappedInput),
+  if (index < 0 || index >= count || feedSelectors[index].empty()) return;
+  if (feedSelectors[index] == SYNC_SELECTOR) {
+    runSync();
+    return;
+  }
+  startActivityForResult(std::make_unique<SiftReaderActivity>(renderer, mappedInput, feedSelectors[index]),
                          [](const ActivityResult&) {});
+}
+
+void SiftFeedsActivity::runSync() {
+  lastShownPct = -1;
+  drawSyncProgress(0, 0, "Starting");
+  const int n = sift::sync::syncAll(
+      [](void* ctx, int done, int total, const char* label) {
+        static_cast<SiftFeedsActivity*>(ctx)->drawSyncProgress(done, total, label);
+      },
+      this);
+  const char* doneLabel = "Done";
+  if (n == sift::sync::kBusy) {
+    doneLabel = "Sync already running";
+  } else if (n < 0) {
+    doneLabel = "Couldn't reach Sift";
+  }
+  const int shown = n < 0 ? 0 : n;
+  lastShownPct = -1;
+  drawSyncProgress(shown, shown, doneLabel);
+
+  // Repopulate the list and return to it.
+  buildRows();
+  requestUpdate();
+}
+
+void SiftFeedsActivity::drawSyncProgress(int done, int total, const char* label) {
+  const int pct = total > 0 ? (done * 100 / total) : (done > 0 ? 100 : 0);
+  // Limit e-ink refreshes: only repaint when the percentage actually moves.
+  if (pct == lastShownPct && total > 0 && done != total) return;
+  lastShownPct = pct;
+
+  renderer.clearScreen();
+  const int w = renderer.getScreenWidth();
+  renderer.drawText(UI_12_FONT_ID, SIDE_PADDING, 70, "Downloading for offline", true, EpdFontFamily::BOLD);
+
+  char line[48];
+  if (total > 0) {
+    snprintf(line, sizeof(line), "%d / %d articles", done, total);
+  } else {
+    snprintf(line, sizeof(line), "%s", label ? label : "");
+  }
+  renderer.drawText(UI_10_FONT_ID, SIDE_PADDING, 110, line);
+
+  const int barX = SIDE_PADDING, barY = 138, barW = w - 2 * SIDE_PADDING, barH = 18;
+  renderer.fillRect(barX, barY, barW, barH, true);
+  renderer.fillRect(barX + 2, barY + 2, barW - 4, barH - 4, false);
+  const int fillW = (barW - 4) * pct / 100;
+  if (fillW > 0) renderer.fillRect(barX + 2, barY + 2, fillW, barH - 4, true);
+
+  if (label && total > 0) {
+    renderer.drawText(UI_10_FONT_ID, SIDE_PADDING, 178, label);
+  }
+  renderer.displayBuffer();
 }
 
 void SiftFeedsActivity::buildScreen(UiScreen& screen) {

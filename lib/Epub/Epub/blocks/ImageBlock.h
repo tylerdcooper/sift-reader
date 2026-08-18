@@ -39,7 +39,9 @@ class ImageBlock final : public Block {
   BlockType getType() override { return IMAGE_BLOCK; }
   bool isEmpty() override { return false; }
 
-  void render(GfxRenderer& renderer, const int x, const int y);
+  // dither=false renders a pre-dithered source faithfully (nearest of the 4
+  // native gray levels, no error diffusion) — used for server-dithered images.
+  void render(GfxRenderer& renderer, const int x, const int y, bool dither = true);
   bool serialize(HalFile& file);
   static std::unique_ptr<ImageBlock> deserialize(HalFile& file);
 

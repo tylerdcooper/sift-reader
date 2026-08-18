@@ -30,6 +30,7 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "SiftConfigStore.h"
+#include "activities/sift/SiftBackgroundSync.h"
 #include "WifiCredentialStore.h"
 #include "activities/sift/SiftReaderActivity.h"
 #include "RecentBooksStore.h"
@@ -570,6 +571,9 @@ void loop() {
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   gpio.update();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
+
+  // Docked + configured: pull the Sift catalog for offline in the background.
+  sift::backgroundSyncTick();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 

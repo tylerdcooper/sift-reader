@@ -2,6 +2,7 @@
 
 #include <GfxRenderer.h>
 
+#include <algorithm>
 #include <memory>
 
 #include "MappedInputManager.h"
@@ -10,46 +11,35 @@
 
 namespace fui = freeink::ui;
 
-namespace {
-struct SampleArticle {
-  const char* title;
-  const char* meta;
-  const char* body;
-};
-constexpr const char* kSampleBody =
-    "There is a quiet argument, made mostly by people who build things for a living, that software should be "
-    "slow to change and fast to use. Not slow in the sense of sluggish, but slow in the sense of considered.\n\n"
-    "The fastest software is the software that does less. Every feature you add is a feature someone has to "
-    "understand, maintain, and eventually work around. The best tools feel small even when they do a great "
-    "deal, because their authors resisted the urge to make everything configurable.\n\n"
-    "On a device like this one, that discipline is not optional. There is no room for a hundred settings, no "
-    "budget for a dozen background services. What remains is the reading, and the reading is the point.\n\n"
-    "So we build for constraint, and we let the constraint do the editing for us.";
-// Sample content for designing the layout in the simulator. Real articles
-// (fetched from the Sift server) replace this next.
-constexpr SampleArticle kArticles[] = {
-    {"The case for slow software", "Craft \xC2\xB7 2d", kSampleBody},
-    {"How SQLite scales to millions of reads", "Database Weekly \xC2\xB7 3d", kSampleBody},
-    {"Designing for e-ink: contrast over color", "Type Digest \xC2\xB7 4d", kSampleBody},
-    {"The quiet return of RSS", "The Verge \xC2\xB7 5d", kSampleBody},
-    {"Why your side project should stay small", "Indie Hackers \xC2\xB7 6d", kSampleBody},
-    {"A field guide to focus", "Mind & Machine \xC2\xB7 1w", kSampleBody},
-    {"What we lost when feeds became algorithms", "Longreads \xC2\xB7 1w", kSampleBody},
-    {"Notes on building for constraint", "The Prepared \xC2\xB7 2w", kSampleBody},
-};
-constexpr int kArticleCount = static_cast<int>(sizeof(kArticles) / sizeof(kArticles[0]));
-}  // namespace
-
-SiftReaderActivity::SiftReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("SiftReader", renderer, mappedInput) {}
+SiftReaderActivity::SiftReaderActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string feed)
+    : UiListActivity("SiftReader", renderer, mappedInput), feed(std::move(feed)) {}
 
 void SiftReaderActivity::onEnter() {
   UiListActivity::onEnter();
-  count = kArticleCount < kMax ? kArticleCount : kMax;
+  articles.clear();
+  labels.clear();
+  subtitles.clear();
+
+  if (!sift::fetchArticles(feed, articles)) {
+    labels.push_back("Couldn't load articles");
+    subtitles.push_back("Check the reader's Wi-Fi and try again");
+  }
+
+  const int n = std::min(static_cast<int>(articles.size()), kMax);
+  labels.reserve(n + 1);
+  subtitles.reserve(n + 1);
+  for (int i = 0; i < n; ++i) {
+    labels.push_back(articles[i].title);
+    std::string sub = articles[i].feed;
+    if (!articles[i].date.empty()) sub += (sub.empty() ? "" : "  \xC2\xB7  ") + articles[i].date;
+    subtitles.push_back(sub);
+  }
+
+  count = std::min(static_cast<int>(labels.size()), kMax);
   for (int i = 0; i < count; ++i) {
     fui::ListItem item;
-    item.label = kArticles[i].title;
-    item.subtitle = kArticles[i].meta;
+    item.label = labels[i].c_str();
+    if (!subtitles[i].empty()) item.subtitle = subtitles[i].c_str();
     item.actionValue = static_cast<int16_t>(i);
     rowItems[i] = item;
   }
@@ -58,9 +48,9 @@ void SiftReaderActivity::onEnter() {
 
 void SiftReaderActivity::activateIndex(int index) {
   app.clearTapFlash();
-  if (index < 0 || index >= count) return;
-  const auto& a = kArticles[index];
-  startActivityForResult(std::make_unique<SiftArticleActivity>(renderer, mappedInput, a.title, a.meta, a.body),
+  if (index < 0 || index >= static_cast<int>(articles.size())) return;  // error/empty row
+  const auto& a = articles[index];
+  startActivityForResult(std::make_unique<SiftArticleActivity>(renderer, mappedInput, a.id, a.title),
                          [](const ActivityResult&) {});
 }
 
@@ -77,7 +67,7 @@ void SiftReaderActivity::buildScreen(UiScreen& screen) {
   props.items = rowItems;
   props.count = static_cast<uint16_t>(count);
   props.action = ACTION_ROW;
-  props.inputMask = fui::InputTouch;  // physical buttons stay in loop()
+  props.inputMask = fui::InputTouch;
   syncListViewport(screen, props);
   screen.list(props);
 }

@@ -315,7 +315,7 @@ void HomeActivity::render(RenderLock&&) {
 
   // Sift sits after Recent Books, always present.
   menuItems.insert(menuItems.begin() + 2, "Sift");
-  menuIcons.insert(menuIcons.begin() + 2, Book);
+  menuIcons.insert(menuIcons.begin() + 2, Sift);
 
   if (hasOpdsServers) {
     menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
