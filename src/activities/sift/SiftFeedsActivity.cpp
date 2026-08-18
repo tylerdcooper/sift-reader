@@ -1,106 +1,67 @@
 #include "SiftFeedsActivity.h"
 
 #include <GfxRenderer.h>
-#include <HalGPIO.h>
 #include <WiFi.h>
 
 #include <algorithm>
-#include <cstdio>
 #include <memory>
 
 #include "MappedInputManager.h"
+#include "SiftArticleActivity.h"
+#include "SiftCache.h"
 #include "SiftClient.h"
-#include "SiftReaderActivity.h"
 #include "SiftSync.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
-#include "fontIds.h"
 
 namespace fui = freeink::ui;
-
-namespace {
-const char* const SYNC_SELECTOR = "__sync__";
-constexpr int SIDE_PADDING = 20;
-}  // namespace
 
 SiftFeedsActivity::SiftFeedsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : UiListActivity("SiftFeeds", renderer, mappedInput) {}
 
 void SiftFeedsActivity::buildRows() {
   labels.clear();
-  values.clear();
-  feedSelectors.clear();
+  subtitles.clear();
+  ids.clear();
 
-  int totalUnread = 0;
-  std::vector<sift::Feed> feeds;
-  const bool isConfigured = sift::configured();
-  if (isConfigured && sift::fetchFeeds(totalUnread, feeds)) {
-    labels.push_back("All articles");
-    values.push_back(totalUnread > 0 ? std::to_string(totalUnread) : "");
-    feedSelectors.push_back("all");
-    for (const auto& f : feeds) {
-      labels.push_back(f.title.empty() ? "(untitled feed)" : f.title);
-      values.push_back(f.unread > 0 ? std::to_string(f.unread) : "");
-      feedSelectors.push_back(std::to_string(f.id));
-    }
-    labels.push_back("Download all for offline");
-    values.push_back("");
-    feedSelectors.push_back(SYNC_SELECTOR);
-  } else if (!isConfigured) {
-    labels.push_back("Sift not set up");
-    values.push_back("");
-    feedSelectors.push_back("");
+  std::vector<sift::cache::ListItem> list;
+  sift::cache::loadList(list);
+
+  if (list.empty()) {
+    labels.push_back(sift::configured() ? "No saved articles yet" : "Sift not set up");
+    subtitles.push_back(sift::configured() ? "Send articles from Sift on the web" : "");
+    ids.push_back(-1);
   } else {
-    labels.push_back("Couldn't reach Sift");
-    values.push_back("");
-    feedSelectors.push_back("");
+    for (const auto& it : list) {
+      labels.push_back(it.title.empty() ? "(untitled)" : it.title);
+      std::string sub = it.feed;
+      if (!it.date.empty()) sub += (sub.empty() ? "" : "  \xC2\xB7  ") + it.date;
+      subtitles.push_back(sub);
+      ids.push_back(it.id);
+    }
   }
 
   count = std::min(static_cast<int>(labels.size()), kMax);
   for (int i = 0; i < count; ++i) {
     fui::ListItem item;
     item.label = labels[i].c_str();
-    if (!values[i].empty()) item.value = values[i].c_str();
+    if (!subtitles[i].empty()) item.subtitle = subtitles[i].c_str();
     item.actionValue = static_cast<int16_t>(i);
     rowItems[i] = item;
   }
   nav.selected = 0;
 }
 
-void SiftFeedsActivity::onEnter() {
-  UiListActivity::onEnter();
-  // CrossPoint keeps Wi-Fi down outside network screens, so bring it up (auto-
-  // connecting to the saved network) before any fetch — otherwise the TLS stack
-  // asserts on a null mutex. Child reader/article activities inherit it.
-  if (sift::configured() && WiFi.status() != WL_CONNECTED) {
-    showConnecting();
-    startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
-                           [this](const ActivityResult&) {
-                             buildRows();
-                             requestUpdate();
-                           });
-    return;
-  }
-  buildRows();
-}
-
-void SiftFeedsActivity::onExit() {
-  // CrossPoint convention: network screens reboot to home on exit to tear Wi-Fi
-  // down cleanly (see OPDS/Calibre/OTA). Must be last — it restarts the device.
-  UiListActivity::onExit();
-  if (WiFi.getMode() != WIFI_MODE_NULL) silentRestart();
-}
-
 void SiftFeedsActivity::showConnecting() {
   labels.clear();
-  values.clear();
-  feedSelectors.clear();
-  labels.push_back("Connecting to Wi-Fi\xE2\x80\xA6");  // …
-  values.push_back("");
-  feedSelectors.push_back("");
+  subtitles.clear();
+  ids.clear();
+  labels.push_back("Connecting to Wi-Fi\xE2\x80\xA6");
+  subtitles.push_back("");
+  ids.push_back(-1);
   count = 1;
-  freeink::ui::ListItem item;
+  fui::ListItem item;
   item.label = labels[0].c_str();
   item.actionValue = 0;
   rowItems[0] = item;
@@ -108,68 +69,46 @@ void SiftFeedsActivity::showConnecting() {
   requestUpdate();
 }
 
-void SiftFeedsActivity::activateIndex(int index) {
-  app.clearTapFlash();
-  if (index < 0 || index >= count || feedSelectors[index].empty()) return;
-  if (feedSelectors[index] == SYNC_SELECTOR) {
-    runSync();
-    return;
-  }
-  startActivityForResult(std::make_unique<SiftReaderActivity>(renderer, mappedInput, feedSelectors[index]),
-                         [](const ActivityResult&) {});
-}
-
-void SiftFeedsActivity::runSync() {
-  lastShownPct = -1;
-  drawSyncProgress(0, 0, "Starting");
-  const int n = sift::sync::syncAll(
-      [](void* ctx, int done, int total, const char* label) {
-        static_cast<SiftFeedsActivity*>(ctx)->drawSyncProgress(done, total, label);
-      },
-      this);
-  const char* doneLabel = "Done";
-  if (n == sift::sync::kBusy) {
-    doneLabel = "Sync already running";
-  } else if (n < 0) {
-    doneLabel = "Couldn't reach Sift";
-  }
-  const int shown = n < 0 ? 0 : n;
-  lastShownPct = -1;
-  drawSyncProgress(shown, shown, doneLabel);
-
-  // Repopulate the list and return to it.
+void SiftFeedsActivity::syncAndRefresh() {
+  sift::sync::syncQueue();  // silent — no progress screen
   buildRows();
   requestUpdate();
 }
 
-void SiftFeedsActivity::drawSyncProgress(int done, int total, const char* label) {
-  const int pct = total > 0 ? (done * 100 / total) : (done > 0 ? 100 : 0);
-  // Limit e-ink refreshes: only repaint when the percentage actually moves.
-  if (pct == lastShownPct && total > 0 && done != total) return;
-  lastShownPct = pct;
+void SiftFeedsActivity::onEnter() {
+  UiListActivity::onEnter();
+  buildRows();  // show the cached queue immediately (offline-first)
 
-  renderer.clearScreen();
-  const int w = renderer.getScreenWidth();
-  renderer.drawText(UI_12_FONT_ID, SIDE_PADDING, 70, "Downloading for offline", true, EpdFontFamily::BOLD);
-
-  char line[48];
-  if (total > 0) {
-    snprintf(line, sizeof(line), "%d / %d articles", done, total);
-  } else {
-    snprintf(line, sizeof(line), "%s", label ? label : "");
+  if (!sift::configured()) return;
+#ifdef SIMULATOR
+  WiFi.begin();  // sim connects immediately; skip the connect UI for headless testing
+  syncAndRefresh();
+  return;
+#endif
+  if (WiFi.status() == WL_CONNECTED) {
+    syncAndRefresh();
+    return;
   }
-  renderer.drawText(UI_10_FONT_ID, SIDE_PADDING, 110, line);
+  // Bring Wi-Fi up (auto-connect saved network), then sync silently.
+  showConnecting();
+  startActivityForResult(std::make_unique<WifiSelectionActivity>(renderer, mappedInput),
+                         [this](const ActivityResult&) { syncAndRefresh(); });
+}
 
-  const int barX = SIDE_PADDING, barY = 138, barW = w - 2 * SIDE_PADDING, barH = 18;
-  renderer.fillRect(barX, barY, barW, barH, true);
-  renderer.fillRect(barX + 2, barY + 2, barW - 4, barH - 4, false);
-  const int fillW = (barW - 4) * pct / 100;
-  if (fillW > 0) renderer.fillRect(barX + 2, barY + 2, fillW, barH - 4, true);
+void SiftFeedsActivity::onExit() {
+  UiListActivity::onExit();
+  if (WiFi.getMode() != WIFI_MODE_NULL) silentRestart();  // CrossPoint network-screen teardown
+}
 
-  if (label && total > 0) {
-    renderer.drawText(UI_10_FONT_ID, SIDE_PADDING, 178, label);
-  }
-  renderer.displayBuffer();
+void SiftFeedsActivity::activateIndex(int index) {
+  app.clearTapFlash();
+  if (index < 0 || index >= count || ids[index] < 0) return;
+  startActivityForResult(std::make_unique<SiftArticleActivity>(renderer, mappedInput, ids[index]),
+                         [this](const ActivityResult&) {
+                           // An article marked read removes itself; refresh from cache.
+                           buildRows();
+                           requestUpdate();
+                         });
 }
 
 void SiftFeedsActivity::buildScreen(UiScreen& screen) {

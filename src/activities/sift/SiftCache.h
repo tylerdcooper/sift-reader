@@ -6,31 +6,35 @@
 
 #include "SiftClient.h"
 
-// On-SD cache of the Sift device API, under /.crosspoint/sift/. Written by the
-// sync routine (and opportunistically on every successful live fetch) so the
-// reader keeps working when the device is offline. JSON text mirrors the server
-// payloads; images are the same normalized JPEGs the reader renders.
+// On-SD store of the read-later queue, under /.crosspoint/sift/ — its own folder,
+// never the books library. queue.json holds the list (for the saved screen);
+// a_<id>.json holds each article's blocks; img/<id>_<n>.jpg the inline images.
 namespace sift {
 namespace cache {
 
 void ensureDirs();
 
-bool saveFeeds(int totalUnread, const std::vector<Feed>& feeds);
-bool loadFeeds(int& totalUnread, std::vector<Feed>& out);
+// The saved-list metadata (no blocks) for the list screen.
+struct ListItem {
+  int id = 0;
+  std::string title;
+  std::string feed;
+  std::string date;
+  int images = 0;
+};
 
-bool saveArticles(const std::string& feed, const std::vector<ArticleMeta>& articles);
-bool loadArticles(const std::string& feed, std::vector<ArticleMeta>& out);
+bool saveList(const std::vector<QueueItem>& items);
+bool loadList(std::vector<ListItem>& out);
 
-bool saveArticle(const ArticleFull& article);
-bool loadArticle(int id, ArticleFull& out);
+bool saveArticle(const QueueItem& item);  // writes a_<id>.json (blocks)
+bool loadArticle(int id, QueueItem& out);
 
-// Cached, panel-normalized JPEG for one article (may not exist).
-std::string imagePath(int id);
-bool hasImage(int id);
+std::string imagePath(int id, int n);  // /.crosspoint/sift/img/<id>_<n>.jpg
+bool hasImage(int id, int n);
 
-// Whole-catalog freshness: unix seconds of the last completed sync, 0 if never.
-uint32_t lastSyncEpoch();
-void setLastSyncEpoch(uint32_t epoch);
+// Remove one article's blocks + images (read on the device, or dropped from the
+// server queue). imageCount bounds how many img files to try removing.
+void removeArticle(int id, int imageCount);
 
 }  // namespace cache
 }  // namespace sift

@@ -10,8 +10,9 @@
 class MappedInputManager;
 
 /**
- * Top level of the Sift reader: "All articles" plus the user's feeds with unread
- * counts, fetched from the Sift server. Selecting a row opens its article list.
+ * The Sift screen on the device: your saved read-later queue (articles you sent
+ * from the web). Connects Wi-Fi and silently syncs on entry, then lists the
+ * saved articles from the on-SD cache; selecting one opens the reader.
  */
 class SiftFeedsActivity final : public UiListActivity {
  public:
@@ -21,27 +22,19 @@ class SiftFeedsActivity final : public UiListActivity {
   void onExit() override;
 
  private:
-  // Show a single "Connecting to Wi-Fi…" placeholder row while the network comes up.
-  void showConnecting();
   int listCount() const override { return count; }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   const char* headerTitle() const override { return "Sift"; }
 
-  // Fetch feeds and (re)populate the list rows, including the "Download for
-  // offline" action row.
-  void buildRows();
-  // Pull the whole catalog to the on-device cache, drawing progress.
-  void runSync();
-  void drawSyncProgress(int done, int total, const char* label);
-  int lastShownPct = -1;
+  void buildRows();          // from the on-SD cache
+  void syncAndRefresh();     // silent queue sync, then rebuild rows
+  void showConnecting();
 
-  static constexpr int kMax = 64;
+  static constexpr int kMax = 128;
   freeink::ui::ListItem rowItems[kMax]{};
   int count = 0;
-  // Backing storage for ListItem pointers; feedSelectors[i] is "all" or a feed
-  // id string (empty for a non-actionable error row).
   std::vector<std::string> labels;
-  std::vector<std::string> values;
-  std::vector<std::string> feedSelectors;
+  std::vector<std::string> subtitles;
+  std::vector<int> ids;  // parallel; -1 for a non-actionable placeholder row
 };

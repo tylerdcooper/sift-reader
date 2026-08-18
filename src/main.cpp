@@ -30,9 +30,8 @@
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
 #include "SiftConfigStore.h"
-#include "activities/sift/SiftBackgroundSync.h"
 #include "WifiCredentialStore.h"
-#include "activities/sift/SiftReaderActivity.h"
+#include "activities/sift/SiftFeedsActivity.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "activities/Activity.h"
@@ -511,7 +510,7 @@ void setup() {
 
 #if defined(SIMULATOR) && defined(SIFT_PREVIEW)
   // Simulator preview: boot straight into the Sift reader for UI iteration.
-  activityManager.replaceActivity(std::make_unique<SiftReaderActivity>(renderer, mappedInputManager));
+  activityManager.replaceActivity(std::make_unique<SiftFeedsActivity>(renderer, mappedInputManager));
 #else
   if (recoveryFirmwareMode) {
     // Skip normal home/reader routing: jump straight into the SD firmware picker.
@@ -571,11 +570,6 @@ void loop() {
   gpio.setSharedConfirmPowerShortPressEmitsPower(SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP);
   gpio.update();
   halTiltSensor.update(SETTINGS.tiltPageTurn, SETTINGS.orientation, activityManager.isReaderActivity());
-
-  // Idle dock auto-sync is disabled: CrossPoint keeps Wi-Fi down outside network
-  // screens (and reboots on exit), so a background task can't reach the network
-  // while idle. Offline sync runs from inside Sift via "Download for offline".
-  // sift::backgroundSyncTick();
 
   renderer.setFadingFix(SETTINGS.fadingFix);
 

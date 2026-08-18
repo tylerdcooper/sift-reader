@@ -3,56 +3,50 @@
 #include <string>
 #include <vector>
 
-// Thin client for the Sift server's device JSON API. Blocking fetches (run from
-// an activity's loop, with a Loading screen shown first). Base URL + token come
-// from SiftConfigStore, or a compile-time simulator default.
+// Client for the Sift "read-later" device API. The device shows the queue of
+// articles you sent from the web, each as ordered text/image blocks. Blocking
+// fetches (run behind the Wi-Fi connect + a Loading state).
 namespace sift {
 
-struct Feed {
-  int id;
-  std::string title;
-  int unread;
+// One piece of an article: a paragraph of text, or an inline image referenced by
+// its index n (fetched from /api/device/image/<id>?n=<n>).
+struct Block {
+  bool image = false;
+  std::string text;  // when !image
+  int n = 0;         // when image
 };
-struct ArticleMeta {
-  int id;
+
+struct QueueItem {
+  int id = 0;
   std::string title;
   std::string feed;
   std::string date;
-  std::string excerpt;
-};
-struct ArticleFull {
-  int id;
-  std::string title;
-  std::string feed;
-  std::string date;
-  std::string text;
-  std::string image;
-  bool hasImage = false;
+  int images = 0;
+  std::vector<Block> blocks;
 };
 
 std::string baseUrl();
 std::string token();
 bool configured();
 
-// Serializes ALL Sift server access. The dock background-sync task and the UI
-// both hit the network; the ESP32 TLS/HTTP stack is not reentrant, so every
-// request must hold this. RAII: construct to take, destruct to release.
+// URL (with token) for the n-th inline image of an article, normalized to
+// `width` px grayscale so the device can dither it itself.
+std::string imageUrl(int id, int n, int width);
+
+// Serializes all Sift network access (the TLS/HTTP stack isn't reentrant).
 class NetGuard {
  public:
   NetGuard();
   ~NetGuard();
 };
-
-// Create the network mutex on the calling (main) thread before any background
-// task can race to lazily create it.
 void netEnsureInit();
 
-// Direct URL (with token) for the article's lead image, normalized server-side
-// to a panel-width grayscale baseline JPEG. Empty if not configured.
-std::string imageUrl(int id, int width);
+// GET /api/device/queue → the full read-later queue with blocks. False on
+// network/parse failure (caller falls back to cache).
+bool fetchQueue(std::vector<QueueItem>& out);
 
-bool fetchFeeds(int& totalUnread, std::vector<Feed>& out);
-bool fetchArticles(const std::string& feed, std::vector<ArticleMeta>& out);
-bool fetchArticle(int id, ArticleFull& out);
+// GET /api/device/read?id=NN → mark an article read on the server (drops it from
+// the queue and marks it read in Sift on the web).
+bool markRead(int id);
 
 }  // namespace sift
