@@ -2,15 +2,17 @@
 
 namespace sift {
 
-// Call every main-loop iteration. When the reader is on USB power and Sift is
-// configured, it connects Wi-Fi to the saved network and pulls the read-later
-// queue on a background task — no UI, so opening Sift shows the already-synced
-// list instead of a "Connecting…" screen. Re-syncs periodically while docked
-// and tears Wi-Fi down when unplugged.
+// Sync session driven by opening Sift (the X4 Pro has no USB-power-detect pin,
+// so we can't gate on charging). SiftFeeds calls requestSync() on enter and
+// endSyncSession() on exit; backgroundTick() (from the main loop) connects the
+// saved Wi-Fi and pulls the queue on a task — no UI, no connect screen. Wi-Fi is
+// only up while you're in Sift, then torn down.
+void requestSync();
+void endSyncSession();
 void backgroundTick();
 
-// True while a background connect or sync is in progress (so the Sift screen can
-// say "Sync in progress" if you open it before the first sync finishes).
+// True while a connect or sync is in progress (so the Sift list can show
+// "Sync in progress").
 bool bgBusy();
 
 }  // namespace sift

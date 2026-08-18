@@ -19,6 +19,7 @@ class SiftFeedsActivity final : public UiListActivity {
   SiftFeedsActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
 
   void onEnter() override;
+  void onExit() override;
   void loop() override;
 
  private:

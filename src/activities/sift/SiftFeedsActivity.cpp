@@ -62,22 +62,28 @@ void SiftFeedsActivity::buildRows() {
 
 void SiftFeedsActivity::onEnter() {
   UiListActivity::onEnter();
-  // Show the cached queue immediately — never a connect screen. The background
-  // service (on power) keeps it synced; if it's mid-sync and we have nothing
-  // cached, buildRows() shows "Sync in progress".
+  // Show the cached queue immediately — never a connect screen. Kick a
+  // background connect+sync; buildRows() shows "Sync in progress" if we have
+  // nothing cached yet, and loop() refreshes when it completes.
   wasBusy = sift::bgBusy();
   buildRows();
 
 #ifdef SIMULATOR
-  // The sim isn't "docked", so the background service won't run; sync inline so
-  // the list can be exercised headlessly.
+  // The sim has no saved Wi-Fi creds; sync inline so the list works headlessly.
   if (sift::configured()) {
     WiFi.begin();
     sift::sync::syncQueue();
     buildRows();
     requestUpdate();
   }
+#else
+  sift::requestSync();
 #endif
+}
+
+void SiftFeedsActivity::onExit() {
+  UiListActivity::onExit();
+  sift::endSyncSession();  // tear Wi-Fi down; it's only up while in Sift
 }
 
 void SiftFeedsActivity::loop() {
