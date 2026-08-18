@@ -3,6 +3,7 @@
 #include <Arduino.h>  // millis
 #include <HalGPIO.h>
 #include <Logging.h>
+#include <WiFi.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -38,6 +39,8 @@ void backgroundSyncTick() {
     g_syncedThisDock = false;  // just docked
   }
   if (g_taskRunning.load() || !sift::configured()) return;
+  // Wait for Wi-Fi before doing any TLS; retry on later ticks until it's up.
+  if (WiFi.status() != WL_CONNECTED) return;
 
   const uint32_t now = millis();
   const bool due = !g_syncedThisDock || (now - g_lastSyncMs) >= RESYNC_INTERVAL_MS;
@@ -46,8 +49,11 @@ void backgroundSyncTick() {
   g_syncedThisDock = true;
   g_lastSyncMs = now;
   g_taskRunning.store(true);
+  sift::netEnsureInit();  // create the net mutex on this thread before the task can race for it
   TaskHandle_t handle = nullptr;
-  if (xTaskCreate(syncTask, "sift-sync", 8192, nullptr, 1, &handle) != pdPASS) {
+  // 16 KB: a TLS handshake + JSON parse overflows the old 8 KB stack (which
+  // corrupted a mutex and tripped the xQueueSemaphoreTake assert).
+  if (xTaskCreate(syncTask, "sift-sync", 16384, nullptr, 1, &handle) != pdPASS) {
     g_taskRunning.store(false);
     LOG_ERR("SIFT", "failed to start background sync task");
   } else {

@@ -42,7 +42,10 @@ int syncAll(ProgressFn progress, void* ctx) {
       ArticleFull full;
       if (fetchArticle(m.id, full) && full.hasImage && !cache::hasImage(m.id)) {
         const std::string url = sift::imageUrl(m.id, IMG_W);
-        if (!url.empty()) HttpDownloader::downloadToFile(url, cache::imagePath(m.id));
+        if (!url.empty()) {
+          NetGuard guard;  // serialize with the UI's own fetches
+          HttpDownloader::downloadToFile(url, cache::imagePath(m.id));
+        }
       }
       done++;
       if (progress) progress(ctx, done, total, m.title.c_str());

@@ -2,12 +2,33 @@
 
 #include <ArduinoJson.h>
 #include <Logging.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "SiftCache.h"
 #include "SiftConfigStore.h"
 #include "network/HttpDownloader.h"
 
 namespace sift {
+
+// Function-local static: C++11 guarantees the mutex is created exactly once,
+// even under concurrent first-use. netEnsureInit() lets the main thread force
+// that creation up front.
+static SemaphoreHandle_t siftNetMutex() {
+  static SemaphoreHandle_t m = xSemaphoreCreateMutex();
+  return m;
+}
+
+void netEnsureInit() { (void)siftNetMutex(); }
+
+NetGuard::NetGuard() {
+  SemaphoreHandle_t m = siftNetMutex();
+  if (m) xSemaphoreTake(m, portMAX_DELAY);
+}
+NetGuard::~NetGuard() {
+  SemaphoreHandle_t m = siftNetMutex();
+  if (m) xSemaphoreGive(m);
+}
 
 std::string baseUrl() {
   if (SIFT_CONFIG.hasConfig()) return SIFT_CONFIG.getBaseUrl();
@@ -49,9 +70,12 @@ static bool getJson(const std::string& path, JsonDocument& doc) {
   url += token();
 
   std::string body;
-  if (!HttpDownloader::fetchUrl(url, body)) {
-    LOG_ERR("SIFT", "fetch failed");
-    return false;
+  {
+    NetGuard guard;  // serialize with the background sync task
+    if (!HttpDownloader::fetchUrl(url, body)) {
+      LOG_ERR("SIFT", "fetch failed");
+      return false;
+    }
   }
   const DeserializationError err = deserializeJson(doc, body.c_str());
   if (err) {

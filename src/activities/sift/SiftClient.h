@@ -34,6 +34,19 @@ std::string baseUrl();
 std::string token();
 bool configured();
 
+// Serializes ALL Sift server access. The dock background-sync task and the UI
+// both hit the network; the ESP32 TLS/HTTP stack is not reentrant, so every
+// request must hold this. RAII: construct to take, destruct to release.
+class NetGuard {
+ public:
+  NetGuard();
+  ~NetGuard();
+};
+
+// Create the network mutex on the calling (main) thread before any background
+// task can race to lazily create it.
+void netEnsureInit();
+
 // Direct URL (with token) for the article's lead image, normalized server-side
 // to a panel-width grayscale baseline JPEG. Empty if not configured.
 std::string imageUrl(int id, int width);

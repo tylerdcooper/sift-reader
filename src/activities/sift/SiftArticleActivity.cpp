@@ -81,6 +81,7 @@ void SiftArticleActivity::prepareImage(int id) {
     if (Storage.exists(SIFT_IMG_CACHE)) Storage.remove(SIFT_IMG_CACHE);
     const std::string url = sift::imageUrl(id, bodyWidthPx());
     if (url.empty()) return;
+    sift::NetGuard guard;  // serialize with the background sync task
     if (HttpDownloader::downloadToFile(url, imagePath) != HttpDownloader::OK) {
       LOG_ERR("SIFT", "image download failed");
       return;
