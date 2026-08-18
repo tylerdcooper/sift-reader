@@ -560,6 +560,10 @@ void setup() {
     gpio.update();
   }
 
+  // On boot/wake, pull new Sift articles in the background (connect, sync,
+  // disconnect) so they're ready before you open Sift. No-op if not configured.
+  sift::syncOnWake();
+
   allowSleepAt = millis() + 2000;
 }
 
